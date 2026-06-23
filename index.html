@@ -33,15 +33,29 @@
             padding: 8px; font-family: 'DotGothic16', monospace; font-size: 16px; display: none;
         }
         .dq-btn:active { background: #fff; color: #000; }
+        
+        /* ステータスバー（左上） */
         #status-bar {
             position: fixed; top: 12px; left: 12px; background: #000; color: #fff;
             padding: 4px 8px; font-size: 11px; z-index: 1000; border: 2px solid #fff;
+        }
+
+        /* 🔄 センター固定切り替えボタン（左上・ステータスバーの下） */
+        #lock-btn {
+            position: fixed; top: 45px; left: 12px; background: #000; color: #00ffcc;
+            padding: 6px 12px; font-size: 12px; font-family: 'DotGothic16', monospace;
+            z-index: 1000; border: 2px solid #00ffcc; border-radius: 4px; box-shadow: 0 0 4px #00ffcc;
+        }
+        #lock-btn.unlocked {
+            color: #fff; border: 2px solid #fff; box-shadow: none;
         }
     </style>
 </head>
 <body>
 
     <div id="status-bar">GPS同期中...</div>
+    <button id="lock-btn" onclick="toggleCamLock()">🗺️ カメラ:固定中</button>
+    
     <div id="map"></div>
 
     <div class="dq-window">
@@ -63,7 +77,7 @@
             [35.668300, 139.733900]  // 右上
         ];
 
-        // 地図の初期化（回転プラグインを有効化）
+        // 地図の初期化
         const map = L.map('map', {
             zoomControl: false,
             minZoom: 15,
@@ -71,23 +85,20 @@
             dragging: true,
             touchZoom: true,
             scrollWheelZoom: true,
-            // 🔄 回転機能を有効化する設定
             rotate: true,
             touchRotate: true, 
             rotateControl: false
         }).fitBounds(imageBounds);
 
-        // イラスト（game-map.png）を重ねる
         const gameMapOverlay = L.imageOverlay('game-map.png', imageBounds, {
             opacity: 1.0,
             interactive: true
         }).addTo(map);
 
-        // 裏側のベース地図
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png').addTo(map);
 
-        // === 💥 宝箱の配置設定 💥 ===
         const CHECK_DISTANCE = 15; 
+        let isCamLocked = true; // 🎯 初期状態は「勇者をセンターに固定」
         
         const treasures = [
             {
@@ -108,13 +119,11 @@
             }
         ];
 
-        // 宝箱アイコン
         const treasureIcon = L.divIcon({
             html: '<div style="font-size: 32px; text-align:center; filter: drop-shadow(2px 2px 0px #000);">🎁</div>',
             className: 'custom-icon', iconSize: [40, 40], iconAnchor: [20, 20]
         });
 
-        // マップに配置
         treasures.forEach(t => {
             t.marker = L.marker([t.lat, t.lng], { icon: treasureIcon }).addTo(map);
         });
@@ -133,6 +142,7 @@
         const msgBox = document.getElementById('msg-box');
         const actionBtn = document.getElementById('action-btn');
         const statusBar = document.getElementById('status-bar');
+        const lockBtn = document.getElementById('lock-btn');
         let activeTreasure = null;
 
         if ("geolocation" in navigator) {
@@ -149,7 +159,11 @@
             statusBar.innerHTML = `GPS精度: 約${Math.round(accuracy)}m`;
             const newPos = new L.LatLng(currentLat, currentLng);
             playerMarker.setLatLng(newPos);
-            map.panTo(newPos);
+            
+            // 🎯 固定モードがONの時だけ、画面中央に追従する
+            if (isCamLocked) {
+                map.panTo(newPos);
+            }
 
             let closestTreasure = null;
             let minDistance = Infinity;
@@ -182,6 +196,20 @@
         }
 
         function errorGPS(err) { statusBar.innerHTML = `GPS検索中...`; }
+
+        // 🎯 センター固定の切り替え関数
+        function toggleCamLock() {
+            isCamLocked = !isCamLocked;
+            if (isCamLocked) {
+                lockBtn.innerHTML = "🗺️ カメラ:固定中";
+                lockBtn.classList.remove("unlocked");
+                // 固定した瞬間に勇者の位置へ画面をすっと戻す
+                map.panTo(playerMarker.getLatLng());
+            } else {
+                lockBtn.innerHTML = "🗺️ カメラ:自由移動";
+                lockBtn.classList.add("unlocked");
+            }
+        }
 
         function openTreasure() {
             if (!activeTreasure) return;
