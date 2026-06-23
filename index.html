@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+    <title>TOKYO MIDTOWN QUEST</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #000;
+            font-family: 'DotGothic16', monospace;
+            overflow: hidden;
+            user-select: none;
+        }
+        #map { width: 100%; height: 100%; z-index: 1; }
+
+        /* ドラクエ風UIウィンドウ */
+        .dq-window {
+            position: fixed; bottom: 24px; left: 5%; width: 90%;
+            background: #000; border: 4px solid #fff; border-radius: 6px;
+            box-shadow: 0 0 0 4px #000; color: #fff; padding: 16px; box-sizing: border-box; z-index: 1000;
+        }
+        .dq-text { font-size: 16px; line-height: 1.6; }
+        .dq-btn {
+            margin-top: 12px; width: 100%; background: #000; color: #fff; border: 2px solid #fff;
+            padding: 8px; font-family: 'DotGothic16', monospace; font-size: 16px; display: none;
+        }
+        .dq-btn:active { background: #fff; color: #000; }
+        #status-bar {
+            position: fixed; top: 12px; left: 12px; background: #000; color: #fff;
+            padding: 4px 8px; font-size: 11px; z-index: 1000; border: 2px solid #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="status-bar">GPS同期中...</div>
+    <div id="map"></div>
+
+    <div class="dq-window">
+        <div class="dq-text" id="msg-box">
+            じっしょうじっけんに しゅっぱつしよう！<br>
+            エリア内にある 2つの たからばこを さがすのだ。
+        </div>
+        <button class="dq-btn" id="action-btn" onclick="openTreasure()">【 しらべる 】</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 🎯 マップ範囲
+        const imageBounds = [
+            [35.664300, 139.728600], // 左下
+            [35.668300, 139.733900]  // 右上
+        ];
+
+        // 地図の初期化
+        const map = L.map('map', {
+            zoomControl: false,
+            minZoom: 15,
+            maxZoom: 20,
+            dragging: true,
+            touchZoom: true,
+            scrollWheelZoom: true
+        }).fitBounds(imageBounds);
+
+        // イラスト（game-map.png）を重ねる
+        const gameMapOverlay = L.imageOverlay('game-map.png', imageBounds, {
+            opacity: 1.0,
+            interactive: true
+        }).addTo(map);
+
+        // 裏側のベース地図
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png').addTo(map);
+
+        // === 💥 宝箱の配置設定 💥 ===
+        const CHECK_DISTANCE = 15; 
+        
+        const treasures = [
+            {
+                id: 1,
+                name: "公園の宝箱",
+                lat: 35.667050,
+                lng: 139.732350,
+                opened: false,
+                marker: null
+            },
+            {
+                id: 2,
+                name: "建物群の真ん中の宝箱",
+                lat: 35.665950,
+                lng: 139.730850,
+                opened: false,
+                marker: null
+            }
+        ];
+
+        // 宝箱アイコン
+        const treasureIcon = L.divIcon({
+            html: '<div style="font-size: 32px; text-align:center; filter: drop-shadow(2px 2px 0px #000);">🎁</div>',
+            className: 'custom-icon', iconSize: [40, 40], iconAnchor: [20, 20]
+        });
+
+        // マップに配置
+        treasures.forEach(t => {
+            t.marker = L.marker([t.lat, t.lng], { icon: treasureIcon }).addTo(map);
+        });
+
+        // =======================================================
+        // 🎯 プレイヤー（自分）を自作の勇者ドット絵（player.png）に変更！
+        // =======================================================
+        const playerIcon = L.divIcon({
+            html: '<img src="player.png" style="width:48px; height:48px; filter: drop-shadow(2px 2px 0px #000);">',
+            className: 'player-icon', 
+            iconSize: [48, 48], 
+            iconAnchor: [24, 24] // 勇者の足元ではなく、中心をGPSの現在地に合わせる設定
+        });
+        
+        // プレイヤー配置
+        const playerMarker = L.marker([35.66555, 139.73170], { icon: playerIcon }).addTo(map);
+
+        // --- GPS監視ロジック ---
+        const msgBox = document.getElementById('msg-box');
+        const actionBtn = document.getElementById('action-btn');
+        const statusBar = document.getElementById('status-bar');
+        let activeTreasure = null;
+
+        if ("geolocation" in navigator) {
+            navigator.geolocation.watchPosition(successGPS, errorGPS, {
+                enableHighAccuracy: true, maximumAge: 0, timeout: 5000
+            });
+        }
+
+        function successGPS(position) {
+            const currentLat = position.coords.latitude;
+            const currentLng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+
+            statusBar.innerHTML = `GPS精度: 約${Math.round(accuracy)}m`;
+            const newPos = new L.LatLng(currentLat, currentLng);
+            playerMarker.setLatLng(newPos);
+            map.panTo(newPos);
+
+            let closestTreasure = null;
+            let minDistance = Infinity;
+
+            treasures.forEach(t => {
+                if (!t.opened) {
+                    const dist = map.distance(newPos, L.latLng(t.lat, t.lng));
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestTreasure = t;
+                    }
+                }
+            });
+
+            if (!closestTreasure) {
+                msgBox.innerHTML = `すべての たからばこを あけた！<br>実証実験は大成功だ！`;
+                actionBtn.style.display = "none";
+                return;
+            }
+
+            if (minDistance <= CHECK_DISTANCE) {
+                activeTreasure = closestTreasure;
+                msgBox.innerHTML = `あしもとに たからばこを みつけた！`;
+                actionBtn.style.display = "block";
+            } else {
+                activeTreasure = null;
+                msgBox.innerHTML = `近くの たからばこを さがすのだ。<br>(一番近いお宝まで あと ${Math.round(minDistance)} メートル)`;
+                actionBtn.style.display = "none";
+            }
+        }
+
+        function errorGPS(err) { statusBar.innerHTML = `GPS検索中...`; }
+
+        function openTreasure() {
+            if (!activeTreasure) return;
+
+            activeTreasure.opened = true;
+            actionBtn.style.display = "none";
+            msgBox.innerHTML = `ゆうしゃは たからばこを あけた！<br>なんと！ <span style="color:#ffcc00;">やくそう</span> を てにいれた！`;
+            
+            activeTreasure.marker.setIcon(L.divIcon({
+                html: '<div style="font-size: 32px; text-align:center; opacity: 0.5;">📦</div>',
+                className: 'custom-icon', iconSize: [40, 40], iconAnchor: [20, 20]
+            }));
+
+            activeTreasure = null;
+        }
+    </script>
+</body>
+</html>
