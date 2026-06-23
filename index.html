@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
     <title>TOKYO MIDTOWN QUEST</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -53,6 +53,9 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+
     <script>
         // 🎯 マップ範囲
         const imageBounds = [
@@ -60,14 +63,18 @@
             [35.668300, 139.733900]  // 右上
         ];
 
-        // 地図の初期化
+        // 地図の初期化（回転プラグインを有効化）
         const map = L.map('map', {
             zoomControl: false,
             minZoom: 15,
             maxZoom: 20,
             dragging: true,
             touchZoom: true,
-            scrollWheelZoom: true
+            scrollWheelZoom: true,
+            // 🔄 回転機能を有効化する設定
+            rotate: true,
+            touchRotate: true, 
+            rotateControl: false
         }).fitBounds(imageBounds);
 
         // イラスト（game-map.png）を重ねる
@@ -112,17 +119,14 @@
             t.marker = L.marker([t.lat, t.lng], { icon: treasureIcon }).addTo(map);
         });
 
-        // =======================================================
-        // 🎯 プレイヤー（自分）を自作の勇者ドット絵（player.png）に変更！
-        // =======================================================
+        // プレイヤー（勇者）
         const playerIcon = L.divIcon({
-            html: '<img src="player.png" style="width:48px; height:48px; filter: drop-shadow(2px 2px 0px #000);">',
+            html: '<img src="player.png" style="width:48px; height:48px; filter: drop-shadow(2px 2px 0px #000); ">',
             className: 'player-icon', 
             iconSize: [48, 48], 
-            iconAnchor: [24, 24] // 勇者の足元ではなく、中心をGPSの現在地に合わせる設定
+            iconAnchor: [24, 24]
         });
         
-        // プレイヤー配置
         const playerMarker = L.marker([35.66555, 139.73170], { icon: playerIcon }).addTo(map);
 
         // --- GPS監視ロジック ---
